@@ -1,5 +1,93 @@
 package scala_thrift
 
+object AST {
+  def toIDL(d: Document): String =
+    d.headers.map(toIDL).mkString("", "\n", "\n") + 
+    d.defs.map(toIDL).mkString("", "\n", "\n")
+  def toIDL(h: Header): String = h match {
+    case Include(file) =>
+      "include \"" + file + "\""
+    case CppInclude(file) =>
+      "cpp_include \"" + file + "\""
+    case Namespace(scope, name) =>
+      "namespace " + scope + " " + name
+  }
+  def toIDL(d: Definition): String = d match {
+    case Const(name, tpe, value) =>
+      "const " + toIDL(tpe) + " " + name + " = " + toIDL(value)
+    case Typedef(name, tpe) =>
+      "typedef " + toIDL(tpe) + " " + name
+    case Enum(name, values) =>
+      "\nenum " + name + " {" +
+        values.map(toIDL).mkString("\n  ", ",\n  ", "\n") +
+      "}\n"
+    case Senum(name, values) =>
+      "\nsenum " + name + " {" + 
+        values.map(s => "\"" + s + "\"").mkString("\n  ", ",\n  ", "\n") +
+      "}\n"
+    case Struct(name, fields, _) =>
+      "\nstruct " + name + " {" +
+        fields.map(toIDL).mkString("\n  ", ",\n  ", "\n") +
+      "}\n"
+    case Exception(name, fields) =>
+      "\nexception " + name + " {" +
+        fields.map(toIDL).mkString("\n  ", ",\n  ", "\n") +
+      "}\n"
+    case Service(name, parent, fns) =>
+      val ext = parent.map(p => " extends " + p + " ").getOrElse("")
+      "\nservice " + name + ext + " {" + 
+        fns.map(toIDL).mkString("\n  ", ",\n  ", "\n") +
+      "}\n"
+  }
+  
+  def toIDL(e: EnumValue) = {
+    val num = if (e.value > 0) " = " + e.value else ""
+    e.name + num
+  }
+
+  def toIDL(f: Field): String = {
+    val num = if (f.id > 0) f.id + ": " else ""
+    val dflt = f.default.map(d => " = " + toIDL(d)).getOrElse("")
+    val req = if (f.required) "required " else ""
+    val opt = if (f.optional) "optional " else ""
+    num + req + opt + toIDL(f.tpe) + " " + f.name + dflt
+  }
+
+  def toIDL(f: Function): String = {
+    val async = if (f.async) "async " else ""
+    val throws =
+      if (f.throws.isEmpty) ""
+      else f.throws.map(toIDL).mkString(" throws (", ",", ")")
+    async + toIDL(f.tpe) + " " + f.name + f.args.map(toIDL).mkString("(", ", ", ")") + throws
+  }
+  
+  def toIDL(tpe: FunctionType): String = tpe match {
+    case Void => "void"
+    case TBool => "bool"
+    case TByte => "byte"
+    case TI16 => "i16"
+    case TI32 => "i32"
+    case TI64 => "i64"
+    case TDouble => "double"
+    case TString => "string"
+    case TBinary => "binary"
+    case TSList => "slist"
+    case MapType(k, v, _) => "map<" + toIDL(k) + ", " + toIDL(v) + ">"
+    case SetType(t, _) => "set<" + toIDL(t) + ">"
+    case ListType(t, _) => "list<" + toIDL(t) + ">"
+    case ReferenceType(t) => t
+  }
+  
+  def toIDL(c: ConstValue): String = c match {
+    case IntConstant(v) => v
+    case DoubleConstant(v) => v
+    case Identifier(n) => n
+    case StringLiteral(s) => "\"" + s + "\""
+    case ConstList(ls) => ls.map(toIDL).mkString("[", ", ", "]")
+    case ConstMap(m) => (for ((k, v) <- m) yield toIDL(k) + ":" + toIDL(v)).mkString("{", ", ", "}")
+  }
+}
+
 case class Document(headers: List[Header], defs: List[Definition])
 
 abstract class Header
