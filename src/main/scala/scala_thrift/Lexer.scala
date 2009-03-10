@@ -39,9 +39,6 @@ class Lexer extends StdLexical with ImplicitConversions {
     | failure("illegal character")
   )
 
-  // def Identifier      = (letter | '_') ~ rep(letter | digit | '.' | '_')
-  // def STIdentifier    = (letter | '_') ~ rep(letter | digit | '.' | '_' | '-')
-
   override def whitespace = rep(
       whitespaceChar
     | '/' ~ '*' ~ comment
@@ -49,7 +46,4 @@ class Lexer extends StdLexical with ImplicitConversions {
     | '#' ~ rep(chrExcept(EofCh, '\n'))
     | '/' ~ '*' ~ failure("unclosed comment")
   )
-  
-  // case class IntLiteral(override val chars: String) extends NumericLit(chars)
-  // case class DoubleLiteral(override val chars: String) extends NumericLit(chars)
 }

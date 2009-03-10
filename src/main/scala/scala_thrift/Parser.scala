@@ -24,97 +24,220 @@ class Parser extends StdTokenParsers with ImplicitConversions {
     "union", "yield") ++ BaseType.map.keySet
   lexical.delimiters ++= List("{", "}", "[", "]", "<", ">", "(", ")", ",", ":", ";", "=")
 
-  def document        = rep(header) ~ rep(definition)
-  def header          = include | cppInclude | namespace
-  def include         = "include" ~ literal
-  def cppInclude      = "cpp_include" ~ literal
-  def namespace       = ("namespace" ~ ((namespaceScope ~ identifier) |
-                                        ("smalltalk.category" ~ stIdentifier) |
-                                        ("smalltalk.prefix" ~ identifier))) |
-                        ("php_namespace" ~ literal) |
-                        ("xsd_namespace" ~ literal)
-  def namespaceScope  = accept("namespace scope", {
-    case lexical.Identifier(s) if namespaceScopes.contains(s) => 
-  })
-  def definition      = const | typedef | enum | senum | struct | exception | service
-  def const           = "const" ~ fieldType ~ identifier ~ "=" ~ constValue ~ opt(listSeparator)
-  def typedef         = "typedef" ~ definitionType ~ identifier
-  def enum            = "enum" ~ identifier ~ "{" ~ rep(identifier ~ opt("=" ~ intConstant) ~ opt(listSeparator)) ~ "}"
-  def senum           = "senum" ~ identifier ~ "{" ~ rep(literal ~ opt(listSeparator)) ~ "}"
-  def struct          = "struct" ~ identifier ~ opt("xsd_all") ~ "{" ~> rep(field) <~ "}"
-  def exception       = "exception" ~ identifier ~ "{" ~ rep(field) ~ "}"
-  def service         = "service" ~ identifier ~ opt("extends" ~ identifier) ~ functionList
-  def functionList    = "{" ~ rep(function) ~ "}"
-  def field: Parser[Any] =
-    opt(fieldID) ~ opt(fieldReq) ~ fieldType ~ identifier ~ opt("=" ~ constValue) ~ xsdFieldOptions ~ opt(listSeparator)
-  def fieldID         = intConstant ~ ":"
-  def fieldReq        = "required" | "optional"
-  def xsdFieldOptions = opt("xsd_optional") ~ opt("xsd_nillable") ~ opt(xsdAttrs)
-  def xsdAttrs        = "xsd_attrs" ~ "{" ~ rep(field) ~ "}"
-  def function        = opt("async") ~ functionType ~ identifier ~ "(" ~ rep(field) ~ ")" ~ opt(throws) ~ opt(listSeparator)
-  def functionType    = fieldType | "void"
-  def throws          = "throws" ~ "(" ~ rep(field) ~ ")"
-  def fieldType: Parser[FieldType] =
+  def document:       Parser[Document] = rep(header) ~ rep(definition) ^^ {
+    case hs ~ ds => Document(hs, ds)
+  }
+
+  def header:         Parser[Header] =
+    include | cppInclude | namespace
+
+  def include:        Parser[Include] =
+    "include" ~> literal ^^ (l => Include(l.string))
+
+  def cppInclude:     Parser[CppInclude] =
+    "cpp_include" ~> literal ^^ (l => CppInclude(l.string))
+
+  def namespace:      Parser[Namespace] =
+    sm1Namespace | sm2Namespace | triNamespace | phpNamespace | xsdNamespace
+
+  def triNamespace:   Parser[Namespace] =
+    "namespace" ~> namespaceScope ~ identifier ^^ {
+      case scope ~ name => Namespace(scope, name.name)
+    }
+
+  def sm1Namespace:   Parser[Namespace] =
+    "namespace" ~> "smalltalk.category" ~> stIdentifier ^^ {
+      case name => Namespace("smalltalk.category", name.name)
+    }
+
+  def sm2Namespace:   Parser[Namespace] =
+    "namespace" ~> "smalltalk.prefix" ~> identifier ^^ {
+      case name => Namespace("smalltalk.prefix", name.name)
+    }
+
+  def phpNamespace:   Parser[Namespace] =
+    "php_namespace" ~> literal ^^ (l => Namespace("php", l.string))
+
+  def xsdNamespace:   Parser[Namespace] =
+    "xsd_namespace" ~> literal ^^ (l => Namespace("xsd", l.string))
+
+  def namespaceScope: Parser[String] =
+    accept("namespace scope", {
+      case lexical.Identifier(s) if namespaceScopes.contains(s) => s
+    })
+
+  def definition:     Parser[Definition] =
+    const | typedef | enum | senum | struct | exception | service
+
+  def const:          Parser[Const] =
+    "const" ~> fieldType ~ identifier ~ ("=" ~> constValue <~ opt(listSeparator)) ^^ {
+      case tpe ~ name ~ value => Const(name.name, tpe, value)
+    }
+
+  def typedef:        Parser[Typedef] =
+    "typedef" ~> definitionType ~ identifier ^^ {
+      case tpe ~ name => Typedef(name.name, tpe)
+    }
+
+  def enum:           Parser[Enum] =
+    "enum" ~> identifier ~ ("{" ~> rep(enumValue) <~ "}")  ^^ {
+      case name ~ values => Enum(name.name, values)
+    }
+
+  def enumValue:      Parser[EnumValue] =
+    identifier ~ opt("=" ~> intConstant) <~ opt(listSeparator) ^^ {
+      case name ~ int => EnumValue(name.name, int.map(_.value.toInt).getOrElse(0))
+    }
+
+  def senum:          Parser[Senum] =
+    "senum" ~> identifier ~ ("{" ~> rep(literal <~ opt(listSeparator)) <~ "}") ^^ {
+      case name ~ values => Senum(name.name, values.map(_.string))
+    }
+
+  def struct:         Parser[Struct] =
+    "struct" ~> identifier ~ opt("xsd_all") ~ ("{" ~> rep(field) <~ "}") ^^ {
+      case name ~ xsd ~ fields => Struct(name.name, fields, xsd.isDefined)
+    }
+
+  def exception:      Parser[Exception] =
+    "exception" ~> identifier ~ ("{" ~> rep(field) <~ "}") ^^ {
+      case name ~ fields => Exception(name.name, fields)
+    }
+
+  def service:        Parser[Service] =
+    "service" ~> identifier ~ opt("extends" ~> identifier) ~ functionList ^^ {
+      case name ~ parent ~ fns => Service(name.name, parent.map(_.name), fns)
+    }
+
+  def functionList:   Parser[List[Function]] =
+    "{" ~> rep(function) <~ "}"
+
+  def field:          Parser[Field] =
+    opt(fieldID) ~ opt(fieldReq) ~ fieldType ~ identifier ~ opt("=" ~> constValue) ~ xsdFieldOptions <~ opt(listSeparator) ^^ {
+      case id ~ req ~ tpe ~ name ~ dflt ~ xsd =>
+        var idNumber = 0
+        var required = false
+        var optional = false
+        id match {
+          case Some(i) => idNumber = i
+          case _ => ()
+        }
+        req match {
+          case Some("required") => required = true
+          case Some("optional") => optional = true
+          case _ => ()
+        }
+        Field(idNumber, name.name, tpe, dflt, required, optional)
+    }
+
+  def fieldID:        Parser[Int] =
+    intConstant <~ ":" ^^ (_.value.toInt)
+
+  def fieldReq:       Parser[String] =
+    "required" | "optional"
+  def xsdFieldOptions =
+    opt("xsd_optional") ~ opt("xsd_nillable") ~ opt(xsdAttrs)
+
+  def xsdAttrs:       Parser[List[Field]] =
+    "xsd_attrs" ~> ("{" ~> rep(field) <~ "}")
+
+  def funArgs:        Parser[List[Field]] =
+    "(" ~> rep(field) <~ ")"
+
+  def function:       Parser[Function] =
+    opt("async") ~ functionType ~ identifier ~ funArgs ~ opt(throws) <~ opt(listSeparator) ^^ {
+      case async ~ tpe ~ name ~ args ~ throws =>
+        Function(name.name, tpe, args, async.isDefined, throws.getOrElse(Nil))
+    }
+
+  def functionType:   Parser[FunctionType] =
+    (fieldType | "void") ^^ {
+      case f: FieldType => f
+      case "void" => Void
+    }
+
+  def throws:         Parser[List[Field]] =
+    "throws" ~> "(" ~> rep(field) <~ ")"
+
+  def fieldType:      Parser[FieldType] =
     (identifier | baseType | containerType) ^^ {
       case tpe: FieldType => tpe
       case Identifier(n) => ReferenceType(n)
     }
+
   def definitionType: Parser[DefinitionType] =
     baseType | containerType
-  def baseType: Parser[BaseType] =
+
+  def baseType:       Parser[BaseType] =
     accept("base type", {
       case lexical.Keyword(n) if BaseType.map.contains(n) => BaseType.map(n)
     })
-  def containerType: Parser[ContainerType] =
+
+  def containerType:  Parser[ContainerType] =
     mapType | setType | listType
-  def mapType: Parser[MapType] =
+
+  def mapType:        Parser[MapType] =
     ("map" ~> opt(cppType) ~ keyType ~ valueType) ^^ {
       case cpp ~ ktpe ~ vtpe => MapType(ktpe, vtpe, cpp)
     }
-  def keyType: Parser[FieldType] =
+
+  def keyType:        Parser[FieldType] =
     "<" ~> fieldType <~ ","
-  def valueType: Parser[FieldType] =
+
+  def valueType:      Parser[FieldType] =
     fieldType <~ ">"
-  def setType: Parser[SetType] =
+
+  def setType:        Parser[SetType] =
     "set" ~> opt(cppType) ~ ("<" ~> fieldType <~ ">") ^^ {
       case cpp ~ tpe => SetType(tpe, cpp)
     }
-  def listType: Parser[ListType] =
+
+  def listType:       Parser[ListType] =
     "list" ~> ("<" ~> fieldType <~ ">") ~ opt(cppType) ^^ {
       case tpe ~ cpp => ListType(tpe, cpp)
     }
-  def cppType: Parser[String] =
+
+  def cppType:        Parser[String] =
     "cpp_type" ~> literal ^^ (_.string)
-  def constValue: Parser[ConstValue] =
+
+  def constValue:     Parser[ConstValue] =
     intConstant | doubleConstant | literal | identifier | constList | constMap
-  def constList: Parser[ConstList] =
+
+  def constList:      Parser[ConstList] =
     "[" ~> rep(constValue <~ opt(listSeparator)) <~ "]" ^^ (ConstList.apply _ )
-  def constMap: Parser[ConstMap] =
+
+  def constMap:       Parser[ConstMap] =
     "{" ~> rep((constValue <~ ":") ~ constValue <~ opt(listSeparator)) <~ "}" ^^ (x =>
       ConstMap(Map.empty ++ x.map {
         case key ~ value => (key, value)
       }))
-  def listSeparator   = "," | ";"
-  def intConstant: Parser[IntConstant] =
+
+  def intConstant:    Parser[IntConstant] =
     accept("int constant", {
       case lexical.NumericLit(n) if !n.contains(".") && !n.contains("e") &&
                                     !n.contains("E") && n.exists(_.isDigit) => IntConstant(n)
     })
+
   def doubleConstant: Parser[DoubleConstant] =
     accept("double constant", {
       case lexical.NumericLit(n) => DoubleConstant(n)
     })
-  def literal: Parser[StringLiteral] =
+
+  def literal:        Parser[StringLiteral] =
     accept("string literal", {
       case lexical.StringLit(s) => StringLiteral(s)
     })
-  def identifier: Parser[Identifier] =
+
+  def identifier:     Parser[Identifier] =
     accept("identifier", {
       case lexical.Identifier(s) if !s.contains("-") => Identifier(s)
     })
-  def stIdentifier: Parser[Identifier] =
+
+  def stIdentifier:   Parser[Identifier] =
     accept("smalltalk identifier", { 
       case lexical.Identifier(s) => Identifier(s)
     })
+
+  def listSeparator = "," | ";"
 }
 

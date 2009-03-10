@@ -9,9 +9,6 @@ object ThriftSpec extends Specification {
     val p = new Parser
     import p._
 
-    // def parseExpression[T](expr: String, p: Parser[T]) = {
-    //   phrase(p)(new lexical.Scanner(expr))
-    // }
     def parseExpression[T](expr: String, p: Parser[T]) = {
       phrase(p)(new lexical.Scanner(expr)) match {
         case Success(result, _) => result
@@ -83,8 +80,12 @@ object ThriftSpec extends Specification {
     }
     
     "parse constant definitions" in {
-      parseExpression("const i32 INT32CONSTANT = 9853", const) must haveClass[Success[String]]
-      parseExpression("const map<string,string> MAPCONSTANT = {'hello':'world', 'goodnight':'moon'}", const) must haveClass[Success[String]]
+      parseExpression("const i32 INT32CONSTANT = 9853", const) must_==
+        Const("INT32CONSTANT", TI32, IntConstant("9853"))
+      parseExpression("const map<string,string> MAPCONSTANT = {'hello':'world', 'goodnight':'moon'}", const) must_==
+        Const("MAPCONSTANT", MapType(TString, TString, None),
+          ConstMap(Map(StringLiteral("hello") -> StringLiteral("world"),
+            StringLiteral("goodnight") -> StringLiteral("moon"))))
     }
     
     "parse enum definitions" in {
@@ -95,7 +96,8 @@ object ThriftSpec extends Specification {
           MULTIPLY = 3,
           DIVIDE = 4
         }
-      """, enum) must haveClass[Success[String]]
+      """, enum) must_== Enum("Operation", List(EnumValue("ADD", 1), EnumValue("SUBTRACT", 2),
+                          EnumValue("MULTIPLY", 3), EnumValue("DIVIDE", 4)))
     }
     
     "parse struct definitions" in {
@@ -104,7 +106,9 @@ object ThriftSpec extends Specification {
         1: i32 key
         2: string value
       }
-      """, struct) must haveClass[Success[String]]
+      """, struct) must_== Struct("SharedStruct", List(
+                            Field(1, "key", TI32, None, false, false),
+                            Field(2, "value", TString, None, false, false)), false)
 
       parseExpression("""
       struct Work {
@@ -113,16 +117,22 @@ object ThriftSpec extends Specification {
         3: Operation op,
         4: optional string comment,
       }
-      """, struct) must haveClass[Success[String]]
+      """, struct) must_== Struct("Work", List(
+                            Field(1, "num1", TI32, Some(IntConstant("0")), false, false),
+                            Field(2, "num2", TI32, None, false, false),
+                            Field(3, "op", ReferenceType("Operation"), None, false, false),
+                            Field(4, "comment", TString, None, false, true)), false)
     }
-    
+
     "parse exception definitions" in {
       parseExpression("""
         exception InvalidOperation {
           1: i32 what,
           2: string why
         }
-      """, exception) must haveClass[Success[String]]
+      """, exception) must_== Exception("InvalidOperation", List(
+                                Field(1, "what", TI32, None, false, false),
+                                Field(2, "why", TString, None, false, false)))
     }
     
     "parse service definitions" in {
@@ -150,7 +160,16 @@ object ThriftSpec extends Specification {
          async void zip()
 
       }
-      """, service) must haveClass[Success[String]]
+      """, service) must_== Service("Calculator", Some("shared.SharedService"), List(
+                              Function("ping", Void, Nil, false, Nil),
+                              Function("add", TI32, List(
+                                Field(1, "num1", TI32, None, false, false),
+                                Field(2, "num2", TI32, None, false, false)), false, Nil),
+                              Function("calculate", TI32, List(
+                                Field(1, "logid", TI32, None, false, false),
+                                Field(2, "w", ReferenceType("Work"), None, false, false)), false, List(
+                                  Field(1, "ouch", ReferenceType("InvalidOperation"), None, false, false))),
+                              Function("zip", Void, Nil, true, Nil)))
     }
     
     "parse a whole document" in {
@@ -288,7 +307,7 @@ object ThriftSpec extends Specification {
        * in folders with names gen-<language>. The generated code isn't too scary
        * to look at. It even has pretty indentation.
        */
-      """, document) must haveClass[Success[String]]
+      """, document) must haveClass[Document]
     }
   }
 }

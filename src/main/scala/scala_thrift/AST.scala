@@ -11,29 +11,21 @@ abstract class Definition(name: String)
 case class Const(name: String, tpe: FieldType, value: ConstValue) extends Definition(name)
 case class Typedef(name: String, tpe: DefinitionType) extends Definition(name)
 case class Enum(name: String, values: List[EnumValue]) extends Definition(name)
-case class EnumValue(name: String, value: Int)
+case class EnumValue(name: String, var value: Int)
 case class Senum(name: String, values: List[String]) extends Definition(name)
-case class Struct(name: String, fields: List[Field]) extends Definition(name) {
-  def xsdAll = false
-}
+case class Struct(name: String, fields: List[Field], xsdAll: Boolean) extends Definition(name)
 case class Exception(name: String, fields: List[Field]) extends Definition(name)
 case class Service(name: String, parent: Option[String], functions: List[Function]) extends Definition(name)
 
-case class Field(id: Int, name: String, tpe: FieldType) {
-  def defaultValue: Option[ConstValue] = None
-  def isRequired = false
-  def isOptional = false
+case class Field(var id: Int, name: String, tpe: FieldType, default: Option[ConstValue], required: Boolean, optional: Boolean) {
   def xsdOptional = false
   def xsdNillable = false
   def xsdAttrs: List[Field] = Nil
-  
-  assert(!(isRequired && isOptional))
+
+  assert(!(required && optional))
 }
 
-case class Function(name: String, tpe: FunctionType, args: List[Field]) {
-  def isAsync = false
-  def throws: List[Field] = Nil
-}
+case class Function(name: String, tpe: FunctionType, args: List[Field], async: Boolean, throws: List[Field])
 
 abstract class FunctionType
 case object Void extends FunctionType
