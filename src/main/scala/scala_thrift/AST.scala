@@ -7,7 +7,7 @@ case class Include(file: String) extends Header
 case class CppInclude(file: String) extends Header
 case class Namespace(scope: String, name: String) extends Header
 
-abstract case class Definition(name: String)
+abstract class Definition(name: String)
 case class Const(name: String, tpe: FieldType, value: ConstValue) extends Definition(name)
 case class Typedef(name: String, tpe: DefinitionType) extends Definition(name)
 case class Enum(name: String, values: List[EnumValue]) extends Definition(name)
@@ -49,18 +49,30 @@ case object TDouble extends BaseType
 case object TString extends BaseType
 case object TBinary extends BaseType
 case object TSList extends BaseType
-abstract class ContainerType extends DefinitionType {
-  def cppType: Option[String] = None
-}
-case class MapType(keyType: FieldType, valueType: FieldType) extends ContainerType
-case class SetType(tpe: FieldType) extends ContainerType
-case class ListType(tpe: FieldType) extends ContainerType
+abstract class ContainerType(cppType: Option[String]) extends DefinitionType
+case class MapType(keyType: FieldType, valueType: FieldType, cppType: Option[String]) extends ContainerType(cppType)
+case class SetType(tpe: FieldType, cppType: Option[String]) extends ContainerType(cppType)
+case class ListType(tpe: FieldType, cppType: Option[String]) extends ContainerType(cppType)
 case class ReferenceType(name: String) extends FieldType
 
+object BaseType {
+  val map = Map(
+    "bool" -> TBool
+   ,"byte" -> TByte
+   ,"i16" -> TI16
+   ,"i32" -> TI32
+   ,"i64" -> TI64
+   ,"double" -> TDouble
+   ,"string" -> TString
+   ,"binary" -> TBinary
+   ,"slist" -> TSList
+  )
+}
+
 abstract class ConstValue
-case class IntConstant(s: String) extends ConstValue
-case class DoubleConstant(s: String) extends ConstValue
+case class IntConstant(value: String) extends ConstValue
+case class DoubleConstant(value: String) extends ConstValue
 case class ConstList(elems: List[ConstValue]) extends ConstValue
 case class ConstMap(elems: Map[ConstValue, ConstValue]) extends ConstValue
-case class StringLiteral(s: String) extends ConstValue
+case class StringLiteral(string: String) extends ConstValue
 case class Identifier(name: String) extends ConstValue

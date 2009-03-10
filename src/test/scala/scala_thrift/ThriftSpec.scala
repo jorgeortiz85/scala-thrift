@@ -9,66 +9,76 @@ object ThriftSpec extends Specification {
     val p = new Parser
     import p._
 
+    // def parseExpression[T](expr: String, p: Parser[T]) = {
+    //   phrase(p)(new lexical.Scanner(expr))
+    // }
     def parseExpression[T](expr: String, p: Parser[T]) = {
-      phrase(p)(new lexical.Scanner(expr))
+      phrase(p)(new lexical.Scanner(expr)) match {
+        case Success(result, _) => result
+        case _ => throw new MatchError
+      }
     }
 
     "parse int constants" in {
-      parseExpression("1234", intConstant) must haveClass[Success[String]]
-      parseExpression("-1234", intConstant) must haveClass[Success[String]]
-      parseExpression("+1234", intConstant) must haveClass[Success[String]]
+      parseExpression("1234", intConstant) must_== IntConstant("1234")
+      parseExpression("-1234", intConstant) must_== IntConstant("-1234")
+      parseExpression("+1234", intConstant) must_== IntConstant("1234")
     }
-    
+
     "parse double constants" in {
-      parseExpression("1.23", doubleConstant) must haveClass[Success[String]]
-      parseExpression("-1.23", doubleConstant) must haveClass[Success[String]]
-      parseExpression("1e10", doubleConstant) must haveClass[Success[String]]
+      parseExpression("1.23", doubleConstant) must_== DoubleConstant("1.23")
+      parseExpression("-1.23", doubleConstant) must_== DoubleConstant("-1.23")
+      parseExpression("1e10", doubleConstant) must_== DoubleConstant("1e10")
     }
 
     "parse single quoted string literals" in {
-      parseExpression("'string lit'", literal) must haveClass[Success[String]]
+      parseExpression("'string lit'", literal) must_== StringLiteral("string lit")
     }
 
     "parse double quoted string literals" in {
-      parseExpression("\"string lit\"", literal) must haveClass[Success[String]]
+      parseExpression("\"string lit\"", literal) must_== StringLiteral("string lit")
     }
 
     "parse list constants" in {
-      parseExpression("[1, -2.0e3, 3, wee, 'waldo']", constList) must haveClass[Success[String]]
+      parseExpression("[1, -2.0e3, 3, wee, 'waldo']", constList) must_==
+        ConstList(List(IntConstant("1"), DoubleConstant("-2.0e3"), IntConstant("3"),
+          Identifier("wee"), StringLiteral("waldo")))
     }
     
     "parse map constants" in {
-      parseExpression("{'jorge': 23, 'tony': 24.5}", constMap) must haveClass[Success[String]]
+      parseExpression("{'jorge': 23, 'tony': 24.5}", constMap) must_==
+        ConstMap(Map(StringLiteral("jorge") -> IntConstant("23"),
+          StringLiteral("tony") -> DoubleConstant("24.5")))
     }
 
     "parse all base types" in {
-      for (t <- baseTypes) {
-        parseExpression(t, baseType) must haveClass[Success[String]]
+      for ((name, tpe) <- BaseType.map) {
+        parseExpression(name, baseType) must_== tpe
       }
     }
 
     "parse list types" in {
-      for (t <- baseTypes) {
-        parseExpression("list<" + t + ">", listType) must haveClass[Success[String]]
+      for ((name, tpe) <- BaseType.map) {
+        parseExpression("list<" + name + ">", listType) must_== ListType(tpe, None)
       }
     }
     
     "parse set types" in {
-      for (t <- baseTypes) {
-        parseExpression("set<" + t + ">", setType) must haveClass[Success[String]]
+      for ((name, tpe) <- BaseType.map) {
+        parseExpression("set<" + name + ">", setType) must_== SetType(tpe, None)
       }
     }
     
     "parse map types" in {
-      for (t1 <- baseTypes; t2 <- baseTypes) {
-        parseExpression("map<" + t1 + ", " + t2 + ">", mapType) must haveClass[Success[String]]
+      for ((name1, tpe1) <- BaseType.map; (name2, tpe2) <- BaseType.map) {
+        parseExpression("map<" + name1 + ", " + name2 + ">", mapType) must_== MapType(tpe1, tpe2, None)
       }
     }
     
     "parse typedefs" in {
-      for (t <- baseTypes) {
-        val name = "Wee"
-        parseExpression("typedef " + t + " " + name, typedef) must haveClass[Success[String]]
+      for ((name, tpe) <- BaseType.map) {
+        val ident = "Wee"
+        parseExpression("typedef " + name + " " + ident, typedef) must_== Typedef(ident, tpe)
       }
     }
     

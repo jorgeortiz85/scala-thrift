@@ -18,7 +18,7 @@ class Lexer extends StdLexical with ImplicitConversions {
   def numericLit = sign ~ rep(digit) ~ opt(decPart) ~ opt(expPart) ^^ {
     case s ~ i ~ d ~ e => s + i.mkString("") + d.getOrElse("") + e.getOrElse("")
   }
-  def sign = opt(elem("sign character", c => c == '-' || c == '+')) ^^ { _.map(_.toString).getOrElse("") }
+  def sign = opt(elem("sign character", c => c == '-' || c == '+')) ^^ { _.filter(_ == '-').map(_.toString).getOrElse("") }
   def exponent = elem("exponent character", c => c == 'e' || c == 'E')
   def decPart: Parser[String] = '.' ~ rep1(digit) ^^ {
     case '.' ~ d => "." + d.mkString("")
