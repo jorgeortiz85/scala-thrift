@@ -11,7 +11,7 @@ class Parser extends StdTokenParsers with ImplicitConversions {
   val baseTypes = List("bool", "byte", "i16", "i32", "i64", "double", "string", "binary", "slist")
   lexical.reserved ++= List("include", "cpp_include", "namespace", "smalltalk.category",
     "smalltalk.prefix", "php_namespace", "xsd_namespace", "cpp", "java", "py", "perl", "rb",
-    "cocoa", "csharp", "const", "typedef", "senum", "struct", "xsd_all", "exception", "service",
+    "cocoa", "csharp", "const", "typedef", "enum", "senum", "struct", "xsd_all", "exception", "service",
     "extends", "required", "optional", "xsd_optional", "xsd_nillable", "xsd_attrs", "async",
     "void", "throws", "map", "set", "list", "cpp_type") ++ baseTypes
   lexical.delimiters ++= List("{", "}", "[", "]", "<", ">", "(", ")", ",", ":", ";", "=")
@@ -30,7 +30,7 @@ class Parser extends StdTokenParsers with ImplicitConversions {
   // def Definition      = Const | Typedef | Enum | Senum | Struct | Exception | Service
   // def Const           = "const" ~ FieldType ~ Identifier ~ "=" ~ ConstValue ~ opt(ListSeparator)
   def Typedef         = "typedef" ~ DefinitionType ~ Identifier
-  // def Enum            = "enum" ~ Identifier ~ "{" ~ rep(Identifier ~ opt("=" ~ IntConstant) ~ opt(ListSeparator)) ~ "}"
+  def Enum            = "enum" ~ Identifier ~ "{" ~ repsep(Identifier ~ opt("=" ~ IntConstant), ListSeparator) ~ "}"
   // def Senum           = "senum" ~ Identifier ~ SenumDecl
   // def SenumDecl       = "{" ~ repsep(Literal, ListSeparator) ~ "}"
   // def Struct          = "struct" ~ Identifier ~ "{" ~> repsep(UField, ListSeparator) <~ "}"
@@ -46,20 +46,23 @@ class Parser extends StdTokenParsers with ImplicitConversions {
   // def Function        = opt("async") ~ FunctionType ~ Identifier ~ "(" ~ rep(Field) ~ ")" ~ opt(Throws) ~ opt(ListSeparator)
   // def FunctionType    = FieldType | "void"
   // def Throws          = "throws" ~ "(" ~ rep(Field) ~ ")"
-  // def FieldType: Parser[Any]       = Identifier  | BaseType | ContainerType
-  def DefinitionType  = BaseType  // | ContainerType
-  def BaseType        = 
-  // def ContainerType   = MapType | SetType | ListType
-  // def MapType         = "map" ~ opt(CppType) ~ "<" ~ FieldType ~ "," ~ FieldType ~ ">"
-  // def SetType         = "set" ~ opt(CppType) ~ "<" ~ FieldType ~ ">"
-  // def ListType        = "list" ~ "<" ~ FieldType ~ ">" ~ opt(CppType)
-  // def CppType         = "cpp_type" ~ Literal
-  // def ConstValue: Parser[Any]      = IntConstant | DoubleConstant | Literal | Identifier | ConstList | ConstMap
-  // def ConstList       = "[" ~ repsep(ConstValue, ListSeparator) ~ "]"
-  // def ConstMap        = "{" ~ repsep(ConstValue ~ ":" ~ ConstValue, ListSeparator) ~ "}"
+  def FieldType: Parser[Any]       = Identifier  | BaseType | ContainerType
+  def DefinitionType  = BaseType | ContainerType
+  def BaseType        = accept("base type", { case lexical.Keyword(n) if baseTypes.contains(n) => n })
+  def ContainerType   = MapType | SetType | ListType
+  def MapType         = "map" ~ opt(CppType) ~ "<" ~ FieldType ~ "," ~ FieldType ~ ">"
+  def SetType         = "set" ~ opt(CppType) ~ "<" ~ FieldType ~ ">"
+  def ListType        = "list" ~ "<" ~ FieldType ~ ">" ~ opt(CppType)
+  def CppType         = "cpp_type" ~ Literal
+  def ConstValue: Parser[Any]      = IntConstant | DoubleConstant | Literal | Identifier | ConstList // | ConstMap
+  def ConstList       = "[" ~ repsep(ConstValue, ListSeparator) ~ "]"
+  def ConstMap        = "{" ~ repsep(ConstValue ~ ":" ~ ConstValue, ListSeparator) ~ "}"
   def ListSeparator   = "," | ";"
-  def IntConstant     = accept("int constant", { case lexical.IntLiteral(n) => n })
-  def DoubleConstant  = accept("double constant", { case lexical.DoubleLiteral(n) => n })
+  def IntConstant     = accept("int constant", {
+    case lexical.NumericLit(n) if !n.contains(".") && !n.contains("e") &&
+                                  !n.contains("E") && n.exists(_.isDigit) => n
+  })
+  def DoubleConstant  = accept("double constant", { case lexical.NumericLit(n) => n })
   def Literal         = accept("string literal", { case lexical.StringLit(s) => s })
   def Identifier      = accept("identifier", { case lexical.Identifier(s) if !s.contains("-") => s })
   def STIdentifier    = accept("smalltalk identifier", { case lexical.Identifier(s) => s })

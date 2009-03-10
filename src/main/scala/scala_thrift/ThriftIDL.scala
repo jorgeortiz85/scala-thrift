@@ -1,4 +1,4 @@
-package scala-thrift
+package scala_thrift
 
 object ThriftIDL extends Parser {
   def parse(input: String) =

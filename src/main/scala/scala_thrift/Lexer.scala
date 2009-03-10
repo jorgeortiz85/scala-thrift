@@ -7,7 +7,7 @@ import scala.util.parsing.input.CharArrayReader.EofCh
 
 class Lexer extends StdLexical with ImplicitConversions {
   override def letter = elem("letter", c => ((c >= 'a') && (c <= 'z')) || ((c >= 'A') && (c <= 'Z')))
-  def identChar = letter | elem('_')
+  def identChar = letter | digit | elem('.') | elem('_') | elem('-')
   def stringLit1: Parser[StringLit] = '"' ~ rep(chrExcept('"', '\n', EofCh)) ~ '"' ^^ {
     case '"' ~ s ~ '"' => StringLit(s.mkString(""))
   }
@@ -15,8 +15,8 @@ class Lexer extends StdLexical with ImplicitConversions {
     case '\'' ~ s ~ '\'' => StringLit(s.mkString(""))
   }
   def intLit = sign ~ rep1(digit) ^^ { case s ~ d => s + d.mkString("") }
-  def doubleLit = sign ~ rep(digit) ~ opt(decPart) ~ opt(expPart) ^^ {
-    case s ~ i ~ d ~ e => s + i.mkString("") + d + e
+  def numericLit = sign ~ rep(digit) ~ opt(decPart) ~ opt(expPart) ^^ {
+    case s ~ i ~ d ~ e => s + i.mkString("") + d.getOrElse("") + e.getOrElse("")
   }
   def sign = opt(elem("sign character", c => c == '-' || c == '+')) ^^ { _.map(_.toString).getOrElse("") }
   def exponent = elem("exponent character", c => c == 'e' || c == 'E')
@@ -28,15 +28,14 @@ class Lexer extends StdLexical with ImplicitConversions {
   }
 
   override def token: Parser[Token] = (
-      identChar ~ rep(identChar | '.' | '-') ^^ { case first ~ rest => processIdent(first :: rest mkString "") }
-    | intLit                                 ^^ IntLiteral
-    | doubleLit                              ^^ DoubleLiteral
+      (letter | elem('_')) ~ rep(identChar) ^^ { case first ~ rest => processIdent(first :: rest mkString "") }
     | stringLit1
     | stringLit2
-    | EofCh                                  ^^^ EOF
+    | delim
+    | numericLit                            ^^ NumericLit
+    | EofCh                                 ^^^ EOF
     | '\'' ~> failure("unclosed string literal")
     | '\"' ~> failure("unclosed string literal")
-    | delim
     | failure("illegal character")
   )
 
@@ -51,6 +50,6 @@ class Lexer extends StdLexical with ImplicitConversions {
     | '/' ~ '*' ~ failure("unclosed comment")
   )
   
-  case class IntLiteral(override val chars: String) extends NumericLit(chars)
-  case class DoubleLiteral(override val chars: String) extends NumericLit(chars)
+  // case class IntLiteral(override val chars: String) extends NumericLit(chars)
+  // case class DoubleLiteral(override val chars: String) extends NumericLit(chars)
 }
