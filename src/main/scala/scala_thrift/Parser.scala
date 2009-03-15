@@ -95,8 +95,8 @@ class Parser extends StdTokenParsers with ImplicitConversions {
     }
 
   def struct:         Parser[Struct] =
-    "struct" ~> identifier ~ opt("xsd_all") ~ ("{" ~> rep(field) <~ "}") ^^ {
-      case name ~ xsd ~ fields => Struct(name.name, fields, xsd.isDefined)
+    "struct" ~> identifier ~ (opt("xsd_all") ~> ("{" ~> rep(field) <~ "}")) ^^ {
+      case name ~ fields => Struct(name.name, fields)
     }
 
   def exception:      Parser[Exception] =
@@ -113,8 +113,8 @@ class Parser extends StdTokenParsers with ImplicitConversions {
     "{" ~> rep(function) <~ "}"
 
   def field:          Parser[Field] =
-    opt(fieldID) ~ opt(fieldReq) ~ fieldType ~ identifier ~ opt("=" ~> constValue) ~ xsdFieldOptions <~ opt(listSeparator) ^^ {
-      case id ~ req ~ tpe ~ name ~ dflt ~ xsd =>
+    opt(fieldID) ~ opt(fieldReq) ~ fieldType ~ identifier ~ opt("=" ~> constValue) <~ xsdFieldOptions <~ opt(listSeparator) ^^ {
+      case id ~ req ~ tpe ~ name ~ dflt =>
         var idNumber = 0
         var required = false
         var optional = false
@@ -135,6 +135,7 @@ class Parser extends StdTokenParsers with ImplicitConversions {
 
   def fieldReq:       Parser[String] =
     "required" | "optional"
+
   def xsdFieldOptions =
     opt("xsd_optional") ~ opt("xsd_nillable") ~ opt(xsdAttrs)
 
@@ -160,9 +161,10 @@ class Parser extends StdTokenParsers with ImplicitConversions {
     "throws" ~> "(" ~> rep(field) <~ ")"
 
   def fieldType:      Parser[FieldType] =
-    (identifier | baseType | containerType) ^^ {
+    (identifier | definitionType) ^^ {
       case tpe: FieldType => tpe
       case Identifier(n) => ReferenceType(n)
+      case _ => error("unreachable code")
     }
 
   def definitionType: Parser[DefinitionType] =

@@ -108,7 +108,7 @@ object ThriftSpec extends Specification {
       }
       """, struct) must_== Struct("SharedStruct", List(
                             Field(1, "key", TI32, None, false, false),
-                            Field(2, "value", TString, None, false, false)), false)
+                            Field(2, "value", TString, None, false, false)))
 
       parseExpression("""
       struct Work {
@@ -121,7 +121,7 @@ object ThriftSpec extends Specification {
                             Field(1, "num1", TI32, Some(IntConstant("0")), false, false),
                             Field(2, "num2", TI32, None, false, false),
                             Field(3, "op", ReferenceType("Operation"), None, false, false),
-                            Field(4, "comment", TString, None, false, true)), false)
+                            Field(4, "comment", TString, None, false, true)))
     }
 
     "parse exception definitions" in {
@@ -173,7 +173,7 @@ object ThriftSpec extends Specification {
     }
     
     "parse a whole document" in {
-      parseExpression("""
+      val doc = parseExpression("""
         # Thrift Tutorial
         # Mark Slee (mcslee@facebook.com)
         #
@@ -307,7 +307,11 @@ object ThriftSpec extends Specification {
          * in folders with names gen-<language>. The generated code isn't too scary
          * to look at. It even has pretty indentation.
          */
-      """, document) must haveClass[Document]
+      """, document)
+      
+      println(ScalaGen(doc))
+      
+      doc must haveClass[Document]
     }
   }
 }

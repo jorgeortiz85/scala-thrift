@@ -1,18 +1,16 @@
 package scala_thrift
 
-object AST {
-  def toIDL(d: Document): String =
-    d.headers.map(toIDL).mkString("", "\n", "\n") + 
-    d.defs.map(toIDL).mkString("", "\n", "\n")
-  def toIDL(h: Header): String = h match {
+object AST {  
+  def toIDL(e: Tree): String = e match {
+    case Document(headers, defs) =>
+      headers.map(toIDL).mkString("", "\n", "\n") + 
+      defs.map(toIDL).mkString("", "\n", "\n")
     case Include(file) =>
       "include \"" + file + "\""
     case CppInclude(file) =>
       "cpp_include \"" + file + "\""
     case Namespace(scope, name) =>
       "namespace " + scope + " " + name
-  }
-  def toIDL(d: Definition): String = d match {
     case Const(name, tpe, value) =>
       "const " + toIDL(tpe) + " " + name + " = " + toIDL(value)
     case Typedef(name, tpe) =>
@@ -25,7 +23,7 @@ object AST {
       "\nsenum " + name + " {" + 
         values.map(s => "\"" + s + "\"").mkString("\n  ", ",\n  ", "\n") +
       "}\n"
-    case Struct(name, fields, _) =>
+    case Struct(name, fields) =>
       "\nstruct " + name + " {" +
         fields.map(toIDL).mkString("\n  ", ",\n  ", "\n") +
       "}\n"
@@ -38,30 +36,21 @@ object AST {
       "\nservice " + name + ext + " {" + 
         fns.map(toIDL).mkString("\n  ", ",\n  ", "\n") +
       "}\n"
-  }
-  
-  def toIDL(e: EnumValue) = {
-    val num = if (e.value > 0) " = " + e.value else ""
-    e.name + num
-  }
-
-  def toIDL(f: Field): String = {
-    val num = if (f.id > 0) f.id + ": " else ""
-    val dflt = f.default.map(d => " = " + toIDL(d)).getOrElse("")
-    val req = if (f.required) "required " else ""
-    val opt = if (f.optional) "optional " else ""
-    num + req + opt + toIDL(f.tpe) + " " + f.name + dflt
-  }
-
-  def toIDL(f: Function): String = {
-    val async = if (f.async) "async " else ""
-    val throws =
-      if (f.throws.isEmpty) ""
-      else f.throws.map(toIDL).mkString(" throws (", ",", ")")
-    async + toIDL(f.tpe) + " " + f.name + f.args.map(toIDL).mkString("(", ", ", ")") + throws
-  }
-  
-  def toIDL(tpe: FunctionType): String = tpe match {
+    case EnumValue(name, value) =>
+      val num = if (value > 0) " = " + value else ""
+      name + num
+    case Field(id, name, tpe, default, required, optional) =>
+      val num = if (id > 0) id + ": " else ""
+      val dflt = default.map(d => " = " + toIDL(d)).getOrElse("")
+      val req = if (required) "required " else ""
+      val opt = if (optional) "optional " else ""
+      num + req + opt + toIDL(tpe) + " " + name + dflt
+    case Function(name, tpe, args, asy, thrws) =>
+      val async = if (asy) "async " else ""
+      val throws =
+        if (thrws.isEmpty) ""
+        else thrws.map(toIDL).mkString(" throws (", ",", ")")
+      async + toIDL(tpe) + " " + name + args.map(toIDL).mkString("(", ", ", ")") + throws
     case Void => "void"
     case TBool => "bool"
     case TByte => "byte"
@@ -76,46 +65,42 @@ object AST {
     case SetType(t, _) => "set<" + toIDL(t) + ">"
     case ListType(t, _) => "list<" + toIDL(t) + ">"
     case ReferenceType(t) => t
-  }
-  
-  def toIDL(c: ConstValue): String = c match {
     case IntConstant(v) => v
     case DoubleConstant(v) => v
     case Identifier(n) => n
     case StringLiteral(s) => "\"" + s + "\""
     case ConstList(ls) => ls.map(toIDL).mkString("[", ", ", "]")
-    case ConstMap(m) => (for ((k, v) <- m) yield toIDL(k) + ":" + toIDL(v)).mkString("{", ", ", "}")
+    case ConstMap(m) =>
+      (for ((k, v) <- m)
+        yield toIDL(k) + ":" + toIDL(v)).mkString("{", ", ", "}")
   }
 }
 
-case class Document(headers: List[Header], defs: List[Definition])
+sealed abstract class Tree
+case class Document(headers: List[Header], defs: List[Definition]) extends Tree
 
-abstract class Header
+abstract class Header extends Tree
 case class Include(file: String) extends Header
 case class CppInclude(file: String) extends Header
 case class Namespace(scope: String, name: String) extends Header
 
-abstract class Definition(name: String)
+abstract class Definition(name: String) extends Tree
 case class Const(name: String, tpe: FieldType, value: ConstValue) extends Definition(name)
 case class Typedef(name: String, tpe: DefinitionType) extends Definition(name)
 case class Enum(name: String, values: List[EnumValue]) extends Definition(name)
-case class EnumValue(name: String, var value: Int)
+case class EnumValue(name: String, var value: Int) extends Tree
 case class Senum(name: String, values: List[String]) extends Definition(name)
-case class Struct(name: String, fields: List[Field], xsdAll: Boolean) extends Definition(name)
+case class Struct(name: String, fields: List[Field]) extends Definition(name)
 case class Exception(name: String, fields: List[Field]) extends Definition(name)
 case class Service(name: String, parent: Option[String], functions: List[Function]) extends Definition(name)
 
-case class Field(var id: Int, name: String, tpe: FieldType, default: Option[ConstValue], required: Boolean, optional: Boolean) {
-  def xsdOptional = false
-  def xsdNillable = false
-  def xsdAttrs: List[Field] = Nil
-
+case class Field(var id: Int, name: String, tpe: FieldType, default: Option[ConstValue], required: Boolean, optional: Boolean) extends Tree {
   assert(!(required && optional))
 }
 
-case class Function(name: String, tpe: FunctionType, args: List[Field], async: Boolean, throws: List[Field])
+case class Function(name: String, tpe: FunctionType, args: List[Field], async: Boolean, throws: List[Field]) extends Tree
 
-abstract class FunctionType
+abstract class FunctionType extends Tree
 case object Void extends FunctionType
 abstract class FieldType extends FunctionType
 abstract class DefinitionType extends FieldType
@@ -149,7 +134,7 @@ object BaseType {
   )
 }
 
-abstract class ConstValue
+abstract class ConstValue extends Tree
 case class IntConstant(value: String) extends ConstValue
 case class DoubleConstant(value: String) extends ConstValue
 case class ConstList(elems: List[ConstValue]) extends ConstValue
